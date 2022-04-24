@@ -84,7 +84,7 @@ fn add_flock(windows: Res<Windows>, mut commands: Commands, asset_server: Res<As
             max_speed: 150.,
             max_accel: 50.,
             boid_radius: 100.,
-            flock_radius: 1000.
+            flock_radius: 100.
         })
         .with_children(|flock| {
             for _ in 1..=INIT_FLOCK_SIZE {
@@ -102,7 +102,6 @@ fn add_flock(windows: Res<Windows>, mut commands: Commands, asset_server: Res<As
 
 fn movement(mut query: Query<(&mut GlobalTransform, &Velocity)>) {
     for (mut transform, velocity) in query.iter_mut() {
-        let old_position = transform.translation;
         transform.translation += (velocity.0 * PHYSICS_TIME_STEP).extend(0.0);
     }
 }
