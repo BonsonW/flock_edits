@@ -1,17 +1,19 @@
 use bevy::{
     core::FixedTimestep,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
-    prelude::*
+    prelude::*,
 };
 use rand::prelude::*;
 
 //============================================================================================================================================
 
 const PHYSICS_TIME_STEP: f32 = 1. / 60.;
-const ANIMATION_TIME_STEP: f32 = 1. / 4.;
+const ANIMATION_TIME_STEP: f32 = 1. / 8.;
 
-const INIT_FLOCK_SIZE: u32 = 400;
+const INIT_FLOCK_SIZE: u32 = 300;
 const SCALE: f32 = 2.5;
+
+const PADDING: f32 = 500.;
 
 //============================================================================================================================================
 
@@ -20,14 +22,15 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugin(LogDiagnosticsPlugin::default())
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
+        .insert_resource(ClearColor(Color::rgb(1.0, 1.0, 1.0)))
         .add_startup_system(setup)
         .add_startup_system(add_flock)
-        .add_system(wrapping)
         .add_system_set(
             SystemSet::new()
                 .with_run_criteria(FixedTimestep::step(PHYSICS_TIME_STEP as f64))
                 .with_system(flocking)
                 .with_system(movement)
+                .with_system(wrapping)
         )
         .add_system_set(
             SystemSet::new()
@@ -51,11 +54,10 @@ struct Boid;
 struct Flock {
     alignment_strength: f32,
     cohesion_strength: f32,
-    separation_strength: f32,
-    max_speed: f32,
-    max_accel: f32,
-    boid_radius: f32,
-    flock_radius: f32
+    avoidance_strength: f32,
+    speed: f32,
+    accel: f32,
+    radius: f32,
 }
 
 //============================================================================================================================================
@@ -78,19 +80,18 @@ fn add_flock(windows: Res<Windows>, mut commands: Commands, asset_server: Res<As
 
     commands.spawn()
         .insert(Flock {
-            alignment_strength: 3.,
-            cohesion_strength: 3.,
-            separation_strength: 2.,
-            max_speed: 150.,
-            max_accel: 50.,
-            boid_radius: 100.,
-            flock_radius: 100.
+            alignment_strength: 2.,
+            cohesion_strength: 1.,
+            avoidance_strength: 1.2,
+            speed: 130.,
+            accel: 40.,
+            radius: 60.
         })
         .with_children(|flock| {
             for _ in 1..=INIT_FLOCK_SIZE {
                 flock.spawn()
                     .insert(Boid)
-                    .insert(Velocity(Vec2::new(rng.gen_range(-2f32..=2f32), rng.gen_range(-2f32..=2f32)).into()))
+                    .insert(Velocity(Vec2::new(rng.gen_range(-100f32..=100f32), rng.gen_range(-100f32..=100f32)).into()))
                     .insert_bundle(SpriteSheetBundle {
                         global_transform: GlobalTransform::from_translation(Vec3::new(rng.gen_range(-bounds_x..=bounds_x), rng.gen_range(-bounds_y..=bounds_y), 1.)),
                         texture_atlas: texture_atlas_handle.clone(),
@@ -108,95 +109,81 @@ fn movement(mut query: Query<(&mut GlobalTransform, &Velocity)>) {
 
 fn flocking(query: Query<(&Flock, &Children)>, mut child_query: Query<(&mut Velocity, &GlobalTransform), With<Boid>>) {
     for (flock, children) in query.iter() {
-        let mut average_position = Vec2::ZERO;
-        let mut average_forward = Vec2::ZERO;
         let mut boids = Vec::new();
 
         for child in children.iter() {
-            if let Ok((velocity, transform)) = child_query.get_mut(*child) {
-                average_position += transform.translation.truncate();
-                average_forward += velocity.0;
-                boids.push((child.id(), transform.translation.truncate()));
+            if let Ok((velocity, transform)) = child_query.get(*child) {
+                boids.push((child.id(), velocity.0, transform.translation.truncate()));
             }
-        }
-
-        if boids.len() < 1 {
-            return
-        };
-
-        average_position /= boids.len() as f32;
-        average_forward /= boids.len() as f32;
-
-        for (_, mut position) in boids.iter_mut() {
-            position.clone_from(&average_position);
         }
 
         for child in children.iter() {
             if let Ok((mut velocity, transform)) = child_query.get_mut(*child) {
-                let position = transform.translation.truncate();
 
-                let alignment = flock.alignment_strength * calculate_alignment(flock.max_speed, average_forward);
-                let cohesion = flock.cohesion_strength * calculate_cohesion(position, average_position, flock.flock_radius);
-                let separation = flock.separation_strength * calculate_separation(child.id(), flock.boid_radius, position, &boids);
+                let mut acceleration: Vec2 = calculate_behaviour(child.id(), velocity.0, transform.translation.truncate(), &boids, &flock) * flock.speed;
 
-                let mut acceleration: Vec2 = flock.max_speed * (alignment + cohesion + separation);
-
-                if acceleration.length_squared() > flock.max_accel * flock.max_accel {
-                    acceleration = acceleration.normalize() * flock.max_accel;
+                if acceleration.length_squared() > flock.accel * flock.accel {
+                    acceleration = acceleration.normalize() * flock.accel;
                 }
 
-                velocity.0 += acceleration * PHYSICS_TIME_STEP;
+                velocity.0 += acceleration;
 
-                if velocity.0.length_squared() > flock.max_speed + flock.max_speed {
-                    velocity.0 = velocity.0.normalize() * flock.max_speed;
+                if velocity.0.length_squared() > flock.speed * flock.speed {
+                    velocity.0 = velocity.0.normalize() * flock.speed;
                 }
             }
         }
     }
 }
 
-fn calculate_alignment(max_speed: f32, average_forward: Vec2) -> Vec2 {
-    let mut alignment: Vec2  = average_forward / max_speed;
+fn calculate_behaviour(id: u32, velocity:Vec2, position: Vec2, boids: &[(u32, Vec2, Vec2)], flock: &Flock) -> Vec2 {
+    let mut alignment = Vec2::ZERO;
+    let mut cohesion = Vec2::ZERO;
+    let mut avoidance = Vec2::ZERO;
+    let mut n_neighbors = 0.;
 
-    if alignment.length_squared() > 1.0 {
+    for (other_id, other_velocity, other_position) in boids.iter() {
+        if other_id == &id {
+            continue;
+        }
+        let offset: Vec2 = position - *other_position;
+        let offset_squared = offset.length_squared();
+
+        if offset_squared >= flock.radius * flock.radius {
+            continue;
+        }
+        n_neighbors += 1.;
+
+        avoidance += offset;
+        alignment += *other_velocity;
+        cohesion += *other_position;
+    }
+    if n_neighbors == 0. {return velocity}
+
+    cohesion -= position;
+
+    alignment *= flock.alignment_strength;
+    cohesion *= flock.cohesion_strength;
+    avoidance *= flock.avoidance_strength;
+
+    alignment /= n_neighbors;
+    cohesion /= n_neighbors;
+    avoidance /= n_neighbors;
+
+    if alignment.length_squared() > flock.alignment_strength * flock.alignment_strength {
         alignment = alignment.normalize();
+        alignment *= flock.alignment_strength;
     }
-
-    return alignment
-}
-
-fn calculate_cohesion(position: Vec2, average_position: Vec2, flock_radius: f32) -> Vec2 {
-    let mut cohesion: Vec2 = average_position - position;
-
-    if cohesion.length_squared() < flock_radius * flock_radius {
-        cohesion /= flock_radius;
-    } else {
+    if cohesion.length_squared() > flock.cohesion_strength * flock.cohesion_strength {
         cohesion = cohesion.normalize();
+        cohesion *= flock.cohesion_strength;
+    }
+    if avoidance.length_squared() > flock.avoidance_strength * flock.avoidance_strength {
+        avoidance = avoidance.normalize();
+        avoidance *= flock.avoidance_strength;
     }
 
-    return cohesion
-}
-
-fn calculate_separation(id: u32, boid_radius: f32, position: Vec2, boids: &[(u32, Vec2)]) -> Vec2 {
-    let mut separation = Vec2::ZERO;
-
-    for (other_id, other_position) in boids.into_iter() {
-        if other_id != &id {
-            let difference: Vec2 = position - *other_position;
-            let distance_squared = difference.length_squared();
-            let minimum_distance = boid_radius * 2.;
-
-            if distance_squared < minimum_distance * minimum_distance {
-                separation += difference.normalize() * (minimum_distance - distance_squared.sqrt()) / minimum_distance;
-            }
-        }
-    }
-
-    if separation.length_squared() > 1.0 {
-        separation = separation.normalize();
-    }
-
-    return separation
+    return alignment + cohesion + avoidance;
 }
 
 fn wrapping(windows: Res<Windows>, mut query: Query<&mut GlobalTransform, With<Boid>>) {
@@ -204,10 +191,10 @@ fn wrapping(windows: Res<Windows>, mut query: Query<&mut GlobalTransform, With<B
     let bounds_y: f32 = windows.get_primary().unwrap().height() * SCALE / 2.;
 
     for mut transform in query.iter_mut() {
-        if transform.translation.x > bounds_x {transform.translation.x = -bounds_x;}
-        if transform.translation.x < -bounds_x {transform.translation.x = bounds_x;}
-        if transform.translation.y > bounds_y {transform.translation.y = -bounds_y;}
-        if transform.translation.y < -bounds_y {transform.translation.y = bounds_y;}
+        if transform.translation.x > bounds_x+PADDING {transform.translation.x = -bounds_x;}
+        else if transform.translation.x < -bounds_x-PADDING {transform.translation.x = bounds_x;}
+        if transform.translation.y > bounds_y+PADDING {transform.translation.y = -bounds_y;}
+        else if transform.translation.y < -bounds_y-PADDING {transform.translation.y = bounds_y;}
     }
 }
 
