@@ -70,9 +70,6 @@ struct Cat;
 #[derive(Component, Deref, DerefMut)]
 struct Velocity(Vec2);
 
-#[derive(Component)]
-struct Hunt(Transform);
-
 struct HuntParams {
     hunt_strength: f32,
     radius: f32,
