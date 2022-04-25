@@ -107,7 +107,7 @@ struct SimulationParams {
 fn settings(
     mut commands: Commands,
     mut egui_context: ResMut<EguiContext>,
-    mut ui_state: ResMut<SimulationParams>,
+    mut sim_params: ResMut<SimulationParams>,
     mut flock_params: ResMut<FlockParams>,
     mut hunt_params: ResMut<HuntParams>,
     asset_server: Res<AssetServer>,
@@ -135,16 +135,16 @@ fn settings(
         .striped(true)
         .show(ui, |ui| {
             ui.label("Bird count: ");
-            ui.add(egui::DragValue::new(&mut ui_state.n_birds));
+            ui.add(egui::DragValue::new(&mut sim_params.n_birds));
             ui.end_row();
             ui.label("Cat count: ");
-            ui.add(egui::DragValue::new(&mut ui_state.n_cats));
+            ui.add(egui::DragValue::new(&mut sim_params.n_cats));
             ui.end_row();
             if ui.button("Simulate!").clicked() {
                 for (agent, _) in agent_query.iter() {
                     commands.entity(agent).despawn();
                 }
-                spawn_agents(windows, commands, asset_server, texture_atlases, ui_state);
+                spawn_agents(windows, commands, asset_server, texture_atlases, sim_params);
             }
         });
     });
