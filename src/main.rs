@@ -16,9 +16,6 @@ use bevy_egui::{egui, EguiContext, EguiPlugin};
 const PHYSICS_STEP: f32 = 1. / 24.;
 const ANIMATION_STEP: f32 = 1. / 8.;
 
-const INIT_FLOCK_SIZE: u32 = 200;
-const INIT_HUNT_SIZE: u32 = 6;
-
 const SCREEN_SCALE: f32 = 2.5;
 const SCREEN_PADDING: f32 = 600.;
 
@@ -32,9 +29,9 @@ fn main() {
         .add_plugin(EguiPlugin)
         .insert_resource(ClearColor(Color::rgb(206./255., 201.0/255., 185./255.)))
         .insert_resource(
-            Settings {
-                n_birds: INIT_FLOCK_SIZE,
-                n_cats: INIT_HUNT_SIZE,
+            SimulationParams {
+                n_birds: 200,
+                n_cats: 6,
             }
         )
         .insert_resource(
@@ -100,7 +97,7 @@ struct FlockParams {
 }
 
 #[derive(Default)]
-struct Settings {
+struct SimulationParams {
     n_birds: u32,
     n_cats: u32,
 }
@@ -110,7 +107,7 @@ struct Settings {
 fn settings(
     mut commands: Commands,
     mut egui_context: ResMut<EguiContext>,
-    mut ui_state: ResMut<Settings>,
+    mut ui_state: ResMut<SimulationParams>,
     mut flock_params: ResMut<FlockParams>,
     mut hunt_params: ResMut<HuntParams>,
     asset_server: Res<AssetServer>,
@@ -153,7 +150,7 @@ fn settings(
     });
 }
 
-fn spawn_agents(windows: Res<Windows>, mut commands: Commands, asset_server: Res<AssetServer>, mut texture_atlases: ResMut<Assets<TextureAtlas>>, ui_state: ResMut<Settings>) {
+fn spawn_agents(windows: Res<Windows>, mut commands: Commands, asset_server: Res<AssetServer>, mut texture_atlases: ResMut<Assets<TextureAtlas>>, ui_state: ResMut<SimulationParams>) {
     let mut rng = rand::thread_rng();
 
     let bounds_x: f32 = windows.get_primary().unwrap().width() * SCREEN_SCALE / 2.;
