@@ -7,6 +7,7 @@ use bevy::{
 use rand::prelude::*;
 use std::collections::HashSet;
 use std::sync::{Mutex};
+use bevy_egui::{egui, EguiContext, EguiPlugin};
 
 //============================================================================================================================================
 
@@ -26,7 +27,14 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugin(LogDiagnosticsPlugin::default())
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
+        .add_plugin(EguiPlugin)
         .insert_resource(ClearColor(Color::rgb(1.0, 1.0, 1.0)))
+        .insert_resource(
+            Settings {
+                n_birds: INIT_FLOCK_SIZE,
+                n_cats: INIT_HUNT_SIZE,
+            }
+        )
         .insert_resource(
             FlockParams {
                 alignment_strength: 4.,
@@ -38,9 +46,11 @@ fn main() {
         .insert_resource(
             HuntParams {
                 radius: 60.,
-                hunt_strength: 100.,
+                hunt_strength: 3.,
         })
+        .add_system(settings)
         .add_startup_system(setup)
+        .add_startup_system(spawn_agents)
         .add_system_set(
             SystemSet::new()
                 .with_run_criteria(FixedTimestep::step(PHYSICS_STEP as f64))
@@ -83,25 +93,58 @@ struct FlockParams {
     radius: f32,
 }
 
+#[derive(Default)]
+struct Settings {
+    n_birds: u32,
+    n_cats: u32,
+}
+
 //============================================================================================================================================
 
-fn setup(windows: Res<Windows>, mut commands: Commands, asset_server: Res<AssetServer>, mut texture_atlases: ResMut<Assets<TextureAtlas>>) {
+fn settings(
+    mut commands: Commands,
+    mut egui_context: ResMut<EguiContext>,
+    mut ui_state: ResMut<Settings>,
+    asset_server: Res<AssetServer>,
+    texture_atlases: ResMut<Assets<TextureAtlas>>,
+    windows: Res<Windows>,
+    agent_query: Query<(Entity, &Velocity)>
+) {
+    egui_context.ctx_mut().set_visuals(egui::Visuals {
+        dark_mode: false,
+        window_shadow: egui::epaint::Shadow::small_light(),
+        ..default()
+    });
+    egui::Window::new("Settings").show(egui_context.ctx_mut(), |ui| {
+        ui.horizontal(|ui| {
+            ui.label("bird count: ");
+            ui.add(egui::DragValue::new(&mut ui_state.n_birds));
+        });
+        ui.horizontal(|ui| {
+            ui.label("cat count: ");
+            ui.add(egui::DragValue::new(&mut ui_state.n_cats));
+        });
+        if ui.button("Restart").clicked() {
+            for (agent, _) in agent_query.iter() {
+                commands.entity(agent).despawn();
+            }
+            spawn_agents(windows, commands, asset_server, texture_atlases, ui_state);
+        }
+    });
+}
+
+fn spawn_agents(windows: Res<Windows>, mut commands: Commands, asset_server: Res<AssetServer>, mut texture_atlases: ResMut<Assets<TextureAtlas>>, ui_state: ResMut<Settings>) {
     let mut rng = rand::thread_rng();
 
     let bounds_x: f32 = windows.get_primary().unwrap().width() * SCREEN_SCALE / 2.;
     let bounds_y: f32 = windows.get_primary().unwrap().height() * SCREEN_SCALE / 2.;
-
-    // world camera
-    let mut camera = OrthographicCameraBundle::new_2d();
-    camera.orthographic_projection.scale = SCREEN_SCALE;
-    commands.spawn_bundle(camera);
 
     // add birds
     let texture_handle = asset_server.load("sprites/bird.png");
     let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(200.0, 200.0), 6, 1);
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
 
-    for _ in 1..=INIT_FLOCK_SIZE {
+    for _ in 1..=ui_state.n_birds {
         commands.spawn()
             .insert(Bird)
             .insert(Velocity(Vec2::new(rng.gen_range(-1f32..=1f32), rng.gen_range(-1f32..=1f32))))
@@ -117,7 +160,7 @@ fn setup(windows: Res<Windows>, mut commands: Commands, asset_server: Res<AssetS
     let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(200.0, 200.0), 6, 1);
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
 
-    for _ in 1..=INIT_HUNT_SIZE {
+    for _ in 1..=ui_state.n_cats {
         commands.spawn()
             .insert(Cat)
             .insert(Velocity(Vec2::new(rng.gen_range(-1f32..=1f32), rng.gen_range(-1f32..=1f32))))
@@ -127,6 +170,13 @@ fn setup(windows: Res<Windows>, mut commands: Commands, asset_server: Res<AssetS
                 ..default()
             });
     }
+}
+
+fn setup(mut commands: Commands) {
+    // world camera
+    let mut camera = OrthographicCameraBundle::new_2d();
+    camera.orthographic_projection.scale = SCREEN_SCALE;
+    commands.spawn_bundle(camera);
 }
 
 fn hunting (mut commands: Commands, mut query: Query<(&mut Velocity, &Transform), With<Cat>>, prey_query: Query<(Entity, &Transform), With<Bird>>, params: Res<HuntParams>, thread_pool: Res<AsyncComputeTaskPool>) {
