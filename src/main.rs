@@ -1,10 +1,10 @@
-#![windows_subsystem = "windows"]
+//#![windows_subsystem = "windows"]
 
 use bevy::{
     core::FixedTimestep,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::*,
-    tasks::{AsyncComputeTaskPool, logical_core_count},
+    tasks::{AsyncComputeTaskPool, physical_core_count},
 };
 use rand::prelude::*;
 use std::collections::HashSet;
@@ -20,7 +20,7 @@ const INIT_FLOCK_SIZE: u32 = 200;
 const INIT_HUNT_SIZE: u32 = 6;
 
 const SCREEN_SCALE: f32 = 2.5;
-const SCREEN_PADDING: f32 = 400.;
+const SCREEN_PADDING: f32 = 600.;
 
 //============================================================================================================================================
 
@@ -39,11 +39,13 @@ fn main() {
         )
         .insert_resource(
             FlockParams {
-                alignment_strength: 4.,
+                alignment_strength: 1.,
                 cohesion_strength: 1.,
-                avoidance_strength: 1.,
+                avoidance_strength: 1.5,
+                gravity_strength: 1.,
                 speed: 130.,
-                radius: 60.
+                radius: 80.,
+                avoidance_radius: 60.,
         })
         .insert_resource(
             HuntParams {
@@ -91,8 +93,10 @@ struct FlockParams {
     alignment_strength: f32,
     cohesion_strength: f32,
     avoidance_strength: f32,
+    gravity_strength: f32,
     speed: f32,
     radius: f32,
+    avoidance_radius: f32,
 }
 
 #[derive(Default)]
@@ -191,7 +195,7 @@ fn hunting (mut commands: Commands, mut query: Query<(&mut Velocity, &Transform)
     }
     let kill_list = Mutex::new(HashSet::new());
 
-    query.par_for_each_mut(&thread_pool, logical_core_count(), |(mut velocity, transform)|{
+    query.par_for_each_mut(&thread_pool, physical_core_count(), |(mut velocity, transform)|{
         let mut closest_dist = i32::MAX;
         let mut closest_offset = Vec2::ZERO;
 
@@ -226,19 +230,20 @@ fn flocking(mut query: Query<(Entity, &mut Velocity, &Transform)>, params: Res<F
         boids.push((entity.id(), velocity.0, transform.translation.truncate()));
     }
 
-    query.par_for_each_mut(&thread_pool, logical_core_count(), |(entity, mut velocity, transform)| {
+    query.par_for_each_mut(&thread_pool, physical_core_count(), |(entity, mut velocity, transform)| {
         velocity.0 = velocity.0 + calculate_flock_behaviour(entity.id(), velocity.0, transform.translation.truncate(), &boids, &params) * params.speed;
 
         if velocity.0.length_squared() > params.speed * params.speed {
             velocity.0 = velocity.0.normalize() * params.speed;
         }
-    }) ;
+    });
 }
 
 fn calculate_flock_behaviour(id: u32, velocity:Vec2, position: Vec2, boids: &[(u32, Vec2, Vec2)], params: &FlockParams) -> Vec2 {
     let mut alignment = Vec2::ZERO;
     let mut cohesion = Vec2::ZERO;
     let mut avoidance = Vec2::ZERO;
+    let mut gravity = (Vec2::ZERO - position) * params.gravity_strength;
     let mut n_neighbors = 0.;
 
     for (other_id, other_velocity, other_position) in boids.iter() {
@@ -248,12 +253,15 @@ fn calculate_flock_behaviour(id: u32, velocity:Vec2, position: Vec2, boids: &[(u
         let offset: Vec2 = position - *other_position;
         let offset_squared = offset.length_squared();
 
-        if offset_squared >= params.radius * params.radius {
+        if offset_squared > params.radius * params.radius {
             continue;
         }
         n_neighbors += 1.;
 
-        avoidance += offset;
+        if offset_squared < params.avoidance_radius * params.avoidance_radius {
+            avoidance += offset;
+        }
+
         alignment += *other_velocity;
         cohesion += *other_position;
     }
@@ -269,20 +277,20 @@ fn calculate_flock_behaviour(id: u32, velocity:Vec2, position: Vec2, boids: &[(u
     cohesion /= n_neighbors;
     avoidance /= n_neighbors;
 
-    if alignment.length_squared() > params.alignment_strength * params.alignment_strength {
-        alignment = alignment.normalize();
-        alignment *= params.alignment_strength;
+    if alignment.length_squared() > 1. {
+        alignment = alignment.normalize() * params.alignment_strength;
     }
-    if cohesion.length_squared() > params.cohesion_strength * params.cohesion_strength {
-        cohesion = cohesion.normalize();
-        cohesion *= params.cohesion_strength;
+    if cohesion.length_squared() > 1. {
+        cohesion = cohesion.normalize() * params.cohesion_strength;
     }
-    if avoidance.length_squared() > params.avoidance_strength * params.avoidance_strength {
-        avoidance = avoidance.normalize();
-        avoidance *= params.avoidance_strength;
+    if avoidance.length_squared() > 1. {
+        avoidance = avoidance.normalize() * params.avoidance_strength;
+    }
+    if gravity.length_squared() > 1. {
+        gravity = gravity.normalize() * params.gravity_strength;
     }
 
-    return alignment + cohesion + avoidance;
+    return alignment + cohesion + avoidance + gravity;
 }
 
 fn movement(mut query: Query<(&mut Transform, &Velocity)>) {
