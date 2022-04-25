@@ -245,6 +245,8 @@ fn calculate_flock_behaviour(id: u32, velocity:Vec2, position: Vec2, boids: &[(u
     let mut avoidance = Vec2::ZERO;
     let mut gravity = (Vec2::ZERO - position) * params.gravity_strength;
     let mut n_neighbors = 0.;
+    let radius_squared = params.radius * params.radius;
+    let avoidance_radius_squared = params.avoidance_radius * params.avoidance_radius;
 
     for (other_id, other_velocity, other_position) in boids.iter() {
         if other_id == &id {
@@ -253,12 +255,12 @@ fn calculate_flock_behaviour(id: u32, velocity:Vec2, position: Vec2, boids: &[(u
         let offset: Vec2 = position - *other_position;
         let offset_squared = offset.length_squared();
 
-        if offset_squared > params.radius * params.radius {
+        if offset_squared > radius_squared {
             continue;
         }
         n_neighbors += 1.;
 
-        if offset_squared < params.avoidance_radius * params.avoidance_radius {
+        if offset_squared < avoidance_radius_squared {
             avoidance += offset;
         }
 
