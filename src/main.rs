@@ -15,9 +15,9 @@ const ANIMATION_STEP: f32 = 1. / 8.;
 
 const INIT_FLOCK_SIZE: u32 = 200;
 const INIT_HUNT_SIZE: u32 = 6;
-const SCALE: f32 = 2.5;
 
-const PADDING: f32 = 400.;
+const SCREEN_SCALE: f32 = 2.5;
+const SCREEN_PADDING: f32 = 400.;
 
 //============================================================================================================================================
 
@@ -88,12 +88,12 @@ struct FlockParams {
 fn setup(windows: Res<Windows>, mut commands: Commands, asset_server: Res<AssetServer>, mut texture_atlases: ResMut<Assets<TextureAtlas>>) {
     let mut rng = rand::thread_rng();
 
-    let bounds_x: f32 = windows.get_primary().unwrap().width() * SCALE / 2.;
-    let bounds_y: f32 = windows.get_primary().unwrap().height() * SCALE / 2.;
+    let bounds_x: f32 = windows.get_primary().unwrap().width() * SCREEN_SCALE / 2.;
+    let bounds_y: f32 = windows.get_primary().unwrap().height() * SCREEN_SCALE / 2.;
 
     // add camera
     let mut camera = OrthographicCameraBundle::new_2d();
-    camera.orthographic_projection.scale = SCALE;
+    camera.orthographic_projection.scale = SCREEN_SCALE;
     commands.spawn_bundle(camera);
 
     // add birds
@@ -164,12 +164,6 @@ fn hunting (mut commands: Commands, mut query: Query<(&mut Velocity, &Transform)
     }
 }
 
-fn movement(mut query: Query<(&mut Transform, &Velocity)>) {
-    for (mut transform, velocity) in query.iter_mut() {
-        transform.translation += (velocity.0 * PHYSICS_STEP).extend(0.0);
-    }
-}
-
 fn flocking(mut query: Query<(Entity, &mut Velocity, &Transform)>, params: Res<FlockParams>, thread_pool: Res<AsyncComputeTaskPool>) {
     let mut boids = Vec::new();
     for (entity, velocity, transform) in query.iter() {
@@ -235,15 +229,21 @@ fn calculate_flock_behaviour(id: u32, velocity:Vec2, position: Vec2, boids: &[(u
     return alignment + cohesion + avoidance;
 }
 
+fn movement(mut query: Query<(&mut Transform, &Velocity)>) {
+    for (mut transform, velocity) in query.iter_mut() {
+        transform.translation += (velocity.0 * PHYSICS_STEP).extend(0.0);
+    }
+}
+
 fn wrapping(windows: Res<Windows>, mut query: Query<&mut Transform>) {
-    let bounds_x: f32 = windows.get_primary().unwrap().width() * SCALE / 2.;
-    let bounds_y: f32 = windows.get_primary().unwrap().height() * SCALE / 2.;
+    let bounds_x: f32 = windows.get_primary().unwrap().width() * SCREEN_SCALE / 2.;
+    let bounds_y: f32 = windows.get_primary().unwrap().height() * SCREEN_SCALE / 2.;
 
     for mut transform in query.iter_mut() {
-        if transform.translation.x > bounds_x+PADDING {transform.translation.x = -bounds_x;}
-        else if transform.translation.x < -bounds_x-PADDING {transform.translation.x = bounds_x;}
-        if transform.translation.y > bounds_y+PADDING {transform.translation.y = -bounds_y;}
-        else if transform.translation.y < -bounds_y-PADDING {transform.translation.y = bounds_y;}
+        if transform.translation.x > bounds_x+SCREEN_PADDING {transform.translation.x = -bounds_x;}
+        else if transform.translation.x < -bounds_x-SCREEN_PADDING {transform.translation.x = bounds_x;}
+        if transform.translation.y > bounds_y+SCREEN_PADDING {transform.translation.y = -bounds_y;}
+        else if transform.translation.y < -bounds_y-SCREEN_PADDING {transform.translation.y = bounds_y;}
     }
 }
 
@@ -256,7 +256,7 @@ fn sprite_x_direction(mut query: Query<(&mut TextureAtlasSprite, &Velocity)>) {
 
 fn sprite_z_layer(windows: Res<Windows>, mut query: Query<&mut Transform, With<TextureAtlasSprite>>) {
     for mut transform in query.iter_mut() {
-        transform.translation.z = (-transform.translation.y + (windows.get_primary().unwrap().height() * SCALE / 2.)) / 100.;
+        transform.translation.z = (-transform.translation.y + (windows.get_primary().unwrap().height() * SCREEN_SCALE / 2.)) / 100.;
     }
 }
 
