@@ -50,7 +50,7 @@ fn main() {
         .insert_resource(
             HuntParams {
                 radius: 60.,
-                hunt_strength: 3.,
+                hunt_strength: 2.,
         })
         .add_system(settings)
         .add_startup_system(setup)
@@ -111,6 +111,8 @@ fn settings(
     mut commands: Commands,
     mut egui_context: ResMut<EguiContext>,
     mut ui_state: ResMut<Settings>,
+    mut flock_params: ResMut<FlockParams>,
+    mut hunt_params: ResMut<HuntParams>,
     asset_server: Res<AssetServer>,
     texture_atlases: ResMut<Assets<TextureAtlas>>,
     windows: Res<Windows>,
@@ -120,7 +122,16 @@ fn settings(
         window_shadow: egui::epaint::Shadow::small_light(),
         ..default()
     });
-    egui::Window::new("Settings").show(egui_context.ctx_mut(), |ui| {
+    egui::Window::new("Settings")
+        .resizable(false)
+        .default_width(0.)
+        .show(egui_context.ctx_mut(), |ui| {
+        ui.add(egui::Slider::new(&mut flock_params.alignment_strength, 0.0..=3.0).text("Aligment"));
+        ui.add(egui::Slider::new(&mut flock_params.cohesion_strength, 0.0..=3.0).text("Cohesion"));
+        ui.add(egui::Slider::new(&mut flock_params.avoidance_strength, 0.0..=3.0).text("Avoidance"));
+        ui.add(egui::Slider::new(&mut flock_params.gravity_strength, 0.0..=3.0).text("Gravity"));
+        ui.add(egui::Slider::new(&mut hunt_params.hunt_strength, 0.0..=3.0).text("Hunger"));
+        ui.separator();
         egui::Grid::new("grid")
         .num_columns(2)
         .spacing([40.0, 4.0])
@@ -139,7 +150,6 @@ fn settings(
                 spawn_agents(windows, commands, asset_server, texture_atlases, ui_state);
             }
         });
-
     });
 }
 
