@@ -111,20 +111,19 @@ fn settings(
     agent_query: Query<(Entity, &Velocity)>
 ) {
     egui_context.ctx_mut().set_visuals(egui::Visuals {
-        dark_mode: false,
         window_shadow: egui::epaint::Shadow::small_light(),
         ..default()
     });
     egui::Window::new("Settings").show(egui_context.ctx_mut(), |ui| {
         ui.horizontal(|ui| {
-            ui.label("bird count: ");
+            ui.label("Bird count: ");
             ui.add(egui::DragValue::new(&mut ui_state.n_birds));
         });
         ui.horizontal(|ui| {
-            ui.label("cat count: ");
+            ui.label("Cat count: ");
             ui.add(egui::DragValue::new(&mut ui_state.n_cats));
         });
-        if ui.button("Restart").clicked() {
+        if ui.button("Simulate!").clicked() {
             for (agent, _) in agent_query.iter() {
                 commands.entity(agent).despawn();
             }
