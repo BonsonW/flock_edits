@@ -2,10 +2,13 @@
 name = "flock_edits"
 version = "0.1.0"
 edition = "2021"
+authors = ["Bonson Wong <bonson.ym@email.com>"]
+license = "MIT OR Apache-2.0"
+description = "A flock simulator built with bevy"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { version = "0.7.0", features = ["dynamic"] } # make sure this is the latest version
+bevy = "0.7.0"
 rand = "0.8"
 bevy_egui = "0.13"
