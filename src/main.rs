@@ -16,7 +16,7 @@ use bevy_egui::{egui, EguiContext, EguiPlugin};
 const PHYSICS_STEP: f32 = 1. / 24.;
 const ANIMATION_STEP: f32 = 1. / 8.;
 
-const SCREEN_SCALE: f32 = 2.5;
+const SCREEN_SCALE: f32 = 2.;
 const SCREEN_PADDING: f32 = 600.;
 
 //============================================================================================================================================
