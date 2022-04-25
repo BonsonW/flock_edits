@@ -10,8 +10,8 @@ use std::sync::{Mutex};
 
 //============================================================================================================================================
 
-const PHYSICS_TIME_STEP: f32 = 1. / 24.;
-const ANIMATION_TIME_STEP: f32 = 1. / 8.;
+const PHYSICS_STEP: f32 = 1. / 24.;
+const ANIMATION_STEP: f32 = 1. / 8.;
 
 const INIT_FLOCK_SIZE: u32 = 200;
 const INIT_HUNT_SIZE: u32 = 6;
@@ -41,11 +41,9 @@ fn main() {
                 hunt_strength: 100.,
         })
         .add_startup_system(setup)
-        .add_startup_system(add_flock)
-        .add_startup_system(add_cats)
         .add_system_set(
             SystemSet::new()
-                .with_run_criteria(FixedTimestep::step(PHYSICS_TIME_STEP as f64))
+                .with_run_criteria(FixedTimestep::step(PHYSICS_STEP as f64))
                 .with_system(flocking)
                 .with_system(movement)
                 .with_system(wrapping)
@@ -53,7 +51,7 @@ fn main() {
         )
         .add_system_set(
             SystemSet::new()
-                .with_run_criteria(FixedTimestep::step(ANIMATION_TIME_STEP as f64))
+                .with_run_criteria(FixedTimestep::step(ANIMATION_STEP as f64))
                 .with_system(sprite_animation)
                 .with_system(sprite_x_direction)
                 .with_system(sprite_z_layer.after(movement))
@@ -90,18 +88,18 @@ struct FlockParams {
 
 //============================================================================================================================================
 
-fn setup(mut commands: Commands) {
-    let mut camera = OrthographicCameraBundle::new_2d();
-    camera.orthographic_projection.scale = SCALE;
-    commands.spawn_bundle(camera);
-}
-
-fn add_flock(windows: Res<Windows>, mut commands: Commands, asset_server: Res<AssetServer>, mut texture_atlases: ResMut<Assets<TextureAtlas>>) {
+fn setup(windows: Res<Windows>, mut commands: Commands, asset_server: Res<AssetServer>, mut texture_atlases: ResMut<Assets<TextureAtlas>>) {
     let mut rng = rand::thread_rng();
 
     let bounds_x: f32 = windows.get_primary().unwrap().width() * SCALE / 2.;
     let bounds_y: f32 = windows.get_primary().unwrap().height() * SCALE / 2.;
 
+    // add camera
+    let mut camera = OrthographicCameraBundle::new_2d();
+    camera.orthographic_projection.scale = SCALE;
+    commands.spawn_bundle(camera);
+
+    // add birds
     let texture_handle = asset_server.load("sprites/bird.png");
     let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(200.0, 200.0), 6, 1);
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
@@ -116,14 +114,8 @@ fn add_flock(windows: Res<Windows>, mut commands: Commands, asset_server: Res<As
                 ..default()
             });
     }
-}
 
-fn add_cats(windows: Res<Windows>, mut commands: Commands, asset_server: Res<AssetServer>, mut texture_atlases: ResMut<Assets<TextureAtlas>>) {
-    let mut rng = rand::thread_rng();
-
-    let bounds_x: f32 = windows.get_primary().unwrap().width() * SCALE / 2.;
-    let bounds_y: f32 = windows.get_primary().unwrap().height() * SCALE / 2.;
-
+    // add cats
     let texture_handle = asset_server.load("sprites/cat.png");
     let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(200.0, 200.0), 6, 1);
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
@@ -177,7 +169,7 @@ fn hunting (mut commands: Commands, mut query: Query<(&mut Velocity, &Transform)
 
 fn movement(mut query: Query<(&mut Transform, &Velocity)>) {
     for (mut transform, velocity) in query.iter_mut() {
-        transform.translation += (velocity.0 * PHYSICS_TIME_STEP).extend(0.0);
+        transform.translation += (velocity.0 * PHYSICS_STEP).extend(0.0);
     }
 }
 
