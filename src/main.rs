@@ -91,7 +91,7 @@ fn setup(windows: Res<Windows>, mut commands: Commands, asset_server: Res<AssetS
     let bounds_x: f32 = windows.get_primary().unwrap().width() * SCREEN_SCALE / 2.;
     let bounds_y: f32 = windows.get_primary().unwrap().height() * SCREEN_SCALE / 2.;
 
-    // add camera
+    // world camera
     let mut camera = OrthographicCameraBundle::new_2d();
     camera.orthographic_projection.scale = SCREEN_SCALE;
     commands.spawn_bundle(camera);
