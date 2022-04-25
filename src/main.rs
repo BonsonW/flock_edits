@@ -2,19 +2,19 @@ use bevy::{
     core::FixedTimestep,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::*,
-    tasks::{AsyncComputeTaskPool},
+    tasks::{AsyncComputeTaskPool, logical_core_count},
 };
 use rand::prelude::*;
 
 //============================================================================================================================================
 
-const PHYSICS_TIME_STEP: f32 = 1. / 60.;
+const PHYSICS_TIME_STEP: f32 = 1. / 24.;
 const ANIMATION_TIME_STEP: f32 = 1. / 8.;
 
-const INIT_FLOCK_SIZE: u32 = 300;
+const INIT_FLOCK_SIZE: u32 = 500;
 const SCALE: f32 = 2.5;
 
-const PADDING: f32 = 500.;
+const PADDING: f32 = 400.;
 
 //============================================================================================================================================
 
@@ -26,11 +26,10 @@ fn main() {
         .insert_resource(ClearColor(Color::rgb(1.0, 1.0, 1.0)))
         .insert_resource(
             Params {
-                alignment_strength: 2.,
+                alignment_strength: 1.,
                 cohesion_strength: 1.,
-                avoidance_strength: 1.2,
+                avoidance_strength: 1.5,
                 speed: 130.,
-                accel: 40.,
                 radius: 60.
         })
         .add_startup_system(setup)
@@ -65,7 +64,6 @@ struct Params {
     cohesion_strength: f32,
     avoidance_strength: f32,
     speed: f32,
-    accel: f32,
     radius: f32,
 }
 
@@ -92,33 +90,27 @@ fn add_flock(windows: Res<Windows>, mut commands: Commands, asset_server: Res<As
             .insert(Boid)
             .insert(Velocity(Vec2::new(rng.gen_range(-100f32..=100f32), rng.gen_range(-100f32..=100f32)).into()))
             .insert_bundle(SpriteSheetBundle {
-                global_transform: GlobalTransform::from_translation(Vec3::new(rng.gen_range(-bounds_x..=bounds_x), rng.gen_range(-bounds_y..=bounds_y), 1.)),
+                transform: Transform::from_translation(Vec3::new(rng.gen_range(-bounds_x..=bounds_x), rng.gen_range(-bounds_y..=bounds_y), 1.)),
                 texture_atlas: texture_atlas_handle.clone(),
                 ..default()
             });
     }
 }
 
-fn movement(mut query: Query<(&mut GlobalTransform, &Velocity)>) {
+fn movement(mut query: Query<(&mut Transform, &Velocity)>) {
     for (mut transform, velocity) in query.iter_mut() {
         transform.translation += (velocity.0 * PHYSICS_TIME_STEP).extend(0.0);
     }
 }
 
-fn flocking(mut query: Query<(Entity, &mut Velocity, &GlobalTransform), With<Boid>>, params: Res<Params>, thread_pool: Res<AsyncComputeTaskPool>) {
+fn flocking(mut query: Query<(Entity, &mut Velocity, &Transform), With<Boid>>, params: Res<Params>, thread_pool: Res<AsyncComputeTaskPool>) {
     let mut boids = Vec::new();
     for (entity, velocity, transform) in query.iter() {
         boids.push((entity.id(), velocity.0, transform.translation.truncate()));
     }
 
-    query.par_for_each_mut(&thread_pool, 10, |(entity, mut velocity, transform)| {
-        let mut acceleration: Vec2 = calculate_behaviour(entity.id(), velocity.0, transform.translation.truncate(), &boids, &params) * params.speed;
-
-        if acceleration.length_squared() > params.accel * params.accel {
-            acceleration = acceleration.normalize() * params.accel;
-        }
-
-        velocity.0 += acceleration;
+    query.par_for_each_mut(&thread_pool, logical_core_count(), |(entity, mut velocity, transform)| {
+        velocity.0 = velocity.0 + calculate_behaviour(entity.id(), velocity.0, transform.translation.truncate(), &boids, &params) * params.speed;
 
         if velocity.0.length_squared() > params.speed * params.speed {
             velocity.0 = velocity.0.normalize() * params.speed;
@@ -176,7 +168,7 @@ fn calculate_behaviour(id: u32, velocity:Vec2, position: Vec2, boids: &[(u32, Ve
     return alignment + cohesion + avoidance;
 }
 
-fn wrapping(windows: Res<Windows>, mut query: Query<&mut GlobalTransform, With<Boid>>) {
+fn wrapping(windows: Res<Windows>, mut query: Query<&mut Transform, With<Boid>>) {
     let bounds_x: f32 = windows.get_primary().unwrap().width() * SCALE / 2.;
     let bounds_y: f32 = windows.get_primary().unwrap().height() * SCALE / 2.;
 
@@ -195,7 +187,7 @@ fn sprite_x_direction(mut query: Query<(&mut TextureAtlasSprite, &Velocity)>) {
     }
 }
 
-fn sprite_z_layer(windows: Res<Windows>, mut query: Query<&mut GlobalTransform, With<TextureAtlasSprite>>) {
+fn sprite_z_layer(windows: Res<Windows>, mut query: Query<&mut Transform, With<TextureAtlasSprite>>) {
     for mut transform in query.iter_mut() {
         transform.translation.z = (-transform.translation.y + (windows.get_primary().unwrap().height() * SCALE / 2.)) / 100.;
     }
