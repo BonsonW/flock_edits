@@ -11,7 +11,7 @@ use rand::prelude::*;
 const PHYSICS_TIME_STEP: f32 = 1. / 24.;
 const ANIMATION_TIME_STEP: f32 = 1. / 8.;
 
-const INIT_FLOCK_SIZE: u32 = 500;
+const INIT_FLOCK_SIZE: u32 = 200;
 const SCALE: f32 = 2.5;
 
 const PADDING: f32 = 400.;
@@ -26,9 +26,9 @@ fn main() {
         .insert_resource(ClearColor(Color::rgb(1.0, 1.0, 1.0)))
         .insert_resource(
             Params {
-                alignment_strength: 1.,
+                alignment_strength: 4.,
                 cohesion_strength: 1.,
-                avoidance_strength: 1.5,
+                avoidance_strength: 1.2,
                 speed: 130.,
                 radius: 60.
         })
