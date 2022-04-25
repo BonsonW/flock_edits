@@ -30,7 +30,7 @@ fn main() {
         .add_plugin(LogDiagnosticsPlugin::default())
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_plugin(EguiPlugin)
-        .insert_resource(ClearColor(Color::rgb(1.0, 1.0, 1.0)))
+        .insert_resource(ClearColor(Color::rgb(206./255., 201.0/255., 185./255.)))
         .insert_resource(
             Settings {
                 n_birds: INIT_FLOCK_SIZE,
@@ -41,7 +41,7 @@ fn main() {
             FlockParams {
                 alignment_strength: 4.,
                 cohesion_strength: 1.,
-                avoidance_strength: 1.2,
+                avoidance_strength: 1.,
                 speed: 130.,
                 radius: 60.
         })
@@ -117,20 +117,25 @@ fn settings(
         ..default()
     });
     egui::Window::new("Settings").show(egui_context.ctx_mut(), |ui| {
-        ui.horizontal(|ui| {
+        egui::Grid::new("grid")
+        .num_columns(2)
+        .spacing([40.0, 4.0])
+        .striped(true)
+        .show(ui, |ui| {
             ui.label("Bird count: ");
             ui.add(egui::DragValue::new(&mut ui_state.n_birds));
-        });
-        ui.horizontal(|ui| {
+            ui.end_row();
             ui.label("Cat count: ");
             ui.add(egui::DragValue::new(&mut ui_state.n_cats));
-        });
-        if ui.button("Simulate!").clicked() {
-            for (agent, _) in agent_query.iter() {
-                commands.entity(agent).despawn();
+            ui.end_row();
+            if ui.button("Simulate!").clicked() {
+                for (agent, _) in agent_query.iter() {
+                    commands.entity(agent).despawn();
+                }
+                spawn_agents(windows, commands, asset_server, texture_atlases, ui_state);
             }
-            spawn_agents(windows, commands, asset_server, texture_atlases, ui_state);
-        }
+        });
+
     });
 }
 
