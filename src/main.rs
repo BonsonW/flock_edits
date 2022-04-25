@@ -2,6 +2,7 @@ use bevy::{
     core::FixedTimestep,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     prelude::*,
+    tasks::{AsyncComputeTaskPool},
 };
 use rand::prelude::*;
 
@@ -23,6 +24,15 @@ fn main() {
         .add_plugin(LogDiagnosticsPlugin::default())
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .insert_resource(ClearColor(Color::rgb(1.0, 1.0, 1.0)))
+        .insert_resource(
+            Params {
+                alignment_strength: 2.,
+                cohesion_strength: 1.,
+                avoidance_strength: 1.2,
+                speed: 130.,
+                accel: 40.,
+                radius: 60.
+        })
         .add_startup_system(setup)
         .add_startup_system(add_flock)
         .add_system_set(
@@ -50,8 +60,7 @@ struct Velocity(Vec2);
 #[derive(Component)]
 struct Boid;
 
-#[derive(Component, Clone)]
-struct Flock {
+struct Params {
     alignment_strength: f32,
     cohesion_strength: f32,
     avoidance_strength: f32,
@@ -78,27 +87,16 @@ fn add_flock(windows: Res<Windows>, mut commands: Commands, asset_server: Res<As
     let texture_atlas = TextureAtlas::from_grid(texture_handle, Vec2::new(200.0, 200.0), 6, 1);
     let texture_atlas_handle = texture_atlases.add(texture_atlas);
 
-    commands.spawn()
-        .insert(Flock {
-            alignment_strength: 2.,
-            cohesion_strength: 1.,
-            avoidance_strength: 1.2,
-            speed: 130.,
-            accel: 40.,
-            radius: 60.
-        })
-        .with_children(|flock| {
-            for _ in 1..=INIT_FLOCK_SIZE {
-                flock.spawn()
-                    .insert(Boid)
-                    .insert(Velocity(Vec2::new(rng.gen_range(-100f32..=100f32), rng.gen_range(-100f32..=100f32)).into()))
-                    .insert_bundle(SpriteSheetBundle {
-                        global_transform: GlobalTransform::from_translation(Vec3::new(rng.gen_range(-bounds_x..=bounds_x), rng.gen_range(-bounds_y..=bounds_y), 1.)),
-                        texture_atlas: texture_atlas_handle.clone(),
-                        ..default()
-                    });
-            }
-        });
+    for _ in 1..=INIT_FLOCK_SIZE {
+        commands.spawn()
+            .insert(Boid)
+            .insert(Velocity(Vec2::new(rng.gen_range(-100f32..=100f32), rng.gen_range(-100f32..=100f32)).into()))
+            .insert_bundle(SpriteSheetBundle {
+                global_transform: GlobalTransform::from_translation(Vec3::new(rng.gen_range(-bounds_x..=bounds_x), rng.gen_range(-bounds_y..=bounds_y), 1.)),
+                texture_atlas: texture_atlas_handle.clone(),
+                ..default()
+            });
+    }
 }
 
 fn movement(mut query: Query<(&mut GlobalTransform, &Velocity)>) {
@@ -107,36 +105,28 @@ fn movement(mut query: Query<(&mut GlobalTransform, &Velocity)>) {
     }
 }
 
-fn flocking(query: Query<(&Flock, &Children)>, mut child_query: Query<(&mut Velocity, &GlobalTransform), With<Boid>>) {
-    for (flock, children) in query.iter() {
-        let mut boids = Vec::new();
-
-        for child in children.iter() {
-            if let Ok((velocity, transform)) = child_query.get(*child) {
-                boids.push((child.id(), velocity.0, transform.translation.truncate()));
-            }
-        }
-
-        for child in children.iter() {
-            if let Ok((mut velocity, transform)) = child_query.get_mut(*child) {
-
-                let mut acceleration: Vec2 = calculate_behaviour(child.id(), velocity.0, transform.translation.truncate(), &boids, &flock) * flock.speed;
-
-                if acceleration.length_squared() > flock.accel * flock.accel {
-                    acceleration = acceleration.normalize() * flock.accel;
-                }
-
-                velocity.0 += acceleration;
-
-                if velocity.0.length_squared() > flock.speed * flock.speed {
-                    velocity.0 = velocity.0.normalize() * flock.speed;
-                }
-            }
-        }
+fn flocking(mut query: Query<(Entity, &mut Velocity, &GlobalTransform), With<Boid>>, params: Res<Params>, thread_pool: Res<AsyncComputeTaskPool>) {
+    let mut boids = Vec::new();
+    for (entity, velocity, transform) in query.iter() {
+        boids.push((entity.id(), velocity.0, transform.translation.truncate()));
     }
+
+    query.par_for_each_mut(&thread_pool, 10, |(entity, mut velocity, transform)| {
+        let mut acceleration: Vec2 = calculate_behaviour(entity.id(), velocity.0, transform.translation.truncate(), &boids, &params) * params.speed;
+
+        if acceleration.length_squared() > params.accel * params.accel {
+            acceleration = acceleration.normalize() * params.accel;
+        }
+
+        velocity.0 += acceleration;
+
+        if velocity.0.length_squared() > params.speed * params.speed {
+            velocity.0 = velocity.0.normalize() * params.speed;
+        }
+    }) ;
 }
 
-fn calculate_behaviour(id: u32, velocity:Vec2, position: Vec2, boids: &[(u32, Vec2, Vec2)], flock: &Flock) -> Vec2 {
+fn calculate_behaviour(id: u32, velocity:Vec2, position: Vec2, boids: &[(u32, Vec2, Vec2)], params: &Params) -> Vec2 {
     let mut alignment = Vec2::ZERO;
     let mut cohesion = Vec2::ZERO;
     let mut avoidance = Vec2::ZERO;
@@ -149,7 +139,7 @@ fn calculate_behaviour(id: u32, velocity:Vec2, position: Vec2, boids: &[(u32, Ve
         let offset: Vec2 = position - *other_position;
         let offset_squared = offset.length_squared();
 
-        if offset_squared >= flock.radius * flock.radius {
+        if offset_squared >= params.radius * params.radius {
             continue;
         }
         n_neighbors += 1.;
@@ -162,25 +152,25 @@ fn calculate_behaviour(id: u32, velocity:Vec2, position: Vec2, boids: &[(u32, Ve
 
     cohesion -= position;
 
-    alignment *= flock.alignment_strength;
-    cohesion *= flock.cohesion_strength;
-    avoidance *= flock.avoidance_strength;
+    alignment *= params.alignment_strength;
+    cohesion *= params.cohesion_strength;
+    avoidance *= params.avoidance_strength;
 
     alignment /= n_neighbors;
     cohesion /= n_neighbors;
     avoidance /= n_neighbors;
 
-    if alignment.length_squared() > flock.alignment_strength * flock.alignment_strength {
+    if alignment.length_squared() > params.alignment_strength * params.alignment_strength {
         alignment = alignment.normalize();
-        alignment *= flock.alignment_strength;
+        alignment *= params.alignment_strength;
     }
-    if cohesion.length_squared() > flock.cohesion_strength * flock.cohesion_strength {
+    if cohesion.length_squared() > params.cohesion_strength * params.cohesion_strength {
         cohesion = cohesion.normalize();
-        cohesion *= flock.cohesion_strength;
+        cohesion *= params.cohesion_strength;
     }
-    if avoidance.length_squared() > flock.avoidance_strength * flock.avoidance_strength {
+    if avoidance.length_squared() > params.avoidance_strength * params.avoidance_strength {
         avoidance = avoidance.normalize();
-        avoidance *= flock.avoidance_strength;
+        avoidance *= params.avoidance_strength;
     }
 
     return alignment + cohesion + avoidance;
